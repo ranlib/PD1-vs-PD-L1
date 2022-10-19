@@ -1,0 +1,85 @@
+---
+title: "Median co-expression of PD1 VS PD-L1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Using mRNA expression data from TCGA identify the
+disease type with the highest median co-expression of PD-1 and PD-L1.
+
+* PDCD1 = gene for PD-1
+
+* CD274 = gene for PD-L1
+
+```{r cohorts, echo = FALSE}
+library(FirebrowseR)
+diff.Exp.Genes = c("PDCD1","CD274")
+all.Found = F
+page.Counter = 1
+mRNA.Exp = list()
+page.Size = 2000 # using a bigger page size is faster
+#https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/sample-type-codes
+while(all.Found == F){
+  # select primary solid tumors
+  mRNA.Exp[[page.Counter]] = Samples.mRNASeq(format = "csv", protocol="RSEM", sample_type=c("TP"),
+                                             gene = diff.Exp.Genes,
+                                             page_size = page.Size,
+                                             page = page.Counter)
+  if(page.Counter > 1)
+    colnames(mRNA.Exp[[page.Counter]]) = colnames(mRNA.Exp[[page.Counter-1]])
+  
+  if(nrow(mRNA.Exp[[page.Counter]]) < page.Size)
+    all.Found = T
+  else
+    page.Counter = page.Counter + 1
+}
+mRNA.Exp.tot = do.call(rbind, mRNA.Exp)
+#dim(mRNA.Exp.tot)
+mRNA.Exp.complete = subset( mRNA.Exp.tot, expression_log2!='None')
+#dim(mRNA.Exp.complete)
+
+```
+
+```{r plot, echo = FALSE}
+
+pd1 = subset(mRNA.Exp.complete, gene=="PDCD1")
+pd1$expression_log2 = as.numeric(pd1$expression_log2)
+median_pd1 = with(pd1, tapply(expression_log2, cohort, median))
+#median_pd1
+
+pdl1 = subset(mRNA.Exp.complete, gene=="CD274")
+pdl1$expression_log2 = as.numeric(pdl1$expression_log2)
+median_pdl1 = with(pdl1, tapply(expression_log2, cohort, median))
+#median_pdl1
+
+table.Exp = data.frame( cohort=names(median_pd1), pd1=median_pd1, pdl1=median_pdl1)
+
+#names(median_pdl1) == names(median_pd1)
+
+library(ggplot2)
+plot( median_pd1 ~ median_pdl1, data=table.Exp, main="Median Expression PD1 vs PD-L1 per Cohort", xlab="Median Expression PD-L1/ Cohort", ylab="Median Expression PD1/ Cohort", col="red", pch=20, cex=2 )
+text( median_pd1 ~ median_pdl1, data=table.Exp, labels=rownames(table.Exp), cex=0.7, font=2)
+```
+
+```{r table, echo = FALSE}
+library(DT)
+table.Exp.sorted = table.Exp[ with(table.Exp, order( c(median_pd1+median_pdl1),decreasing=T)),]
+write.table(table.Exp.sorted, file = "PD1-vs-PD-L1.tsv", sep = "\t")
+
+datatable(table.Exp.sorted, rownames=F, colnames=c("Cohort","Median Expression of PD1/Cohort","Median Expression of PD-L1/Cohort"),
+          caption="Median Normalized RSEM expression for PD1 and PD-L1 per cohort sorted in decending order by sum of expression values.")
+
+```
+
+## Conclusion
+
+The THYM cohort, solid tumor in the thymus, exhibits the highest co-expression of PD1 and PD-L1, followed by the DLBC (Diffuse Large B-cell Lymphoma). 
+
+More information about these cohorts can be found at [firebrowse.org](http://firebrowse.org/).
+
+
+
+
+
